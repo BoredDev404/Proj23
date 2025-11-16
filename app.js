@@ -1,44 +1,46 @@
 // app.js - Main application logic
-import db from './db.js';
-
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/service-worker.js')
-        .then(() => console.log("Service worker registered"))
-        .catch(err => console.error("SW registration failed:", err));
-}
-
-class LifeTrackerApp {
-    constructor() {
+const LifeTrackerApp = {
+    init() {
         this.currentDate = new Date();
         this.currentViewMonth = new Date();
         this.workoutViewMonth = new Date();
         this.hygieneViewMonth = new Date();
-        this.selectedWorkoutTemplate = 1;
-        this.swipeStartX = 0;
-        this.swipeEndX = 0;
+        this.selectedWorkoutTemplate = null;
         
-        this.init();
-    }
-
-    async init() {
-        // Initialize the app
-        await this.setupDatabase();
         this.setupEventListeners();
         this.updateCurrentDate();
-        await this.loadAllData();
-        this.renderAllPages();
-        
-        console.log('Life Tracker App initialized successfully');
-    }
+        this.initializeApp();
+    },
 
-    async setupDatabase() {
+    async initializeApp() {
         try {
             await db.open();
             console.log('Database opened successfully');
+            
+            // Check if we have any workout templates, if not create a default one
+            const templates = await db.workoutTemplates.toArray();
+            if (templates.length === 0) {
+                const defaultTemplateId = await db.workoutTemplates.add({
+                    name: "Full Body Workout",
+                    createdAt: new Date()
+                });
+                this.selectedWorkoutTemplate = defaultTemplateId;
+                
+                // Add some default exercises
+                await db.workoutExercises.bulkAdd([
+                    { templateId: defaultTemplateId, name: "Squats", pr: "", order: 1, createdAt: new Date() },
+                    { templateId: defaultTemplateId, name: "Push-ups", pr: "", order: 2, createdAt: new Date() },
+                    { templateId: defaultTemplateId, name: "Pull-ups", pr: "", order: 3, createdAt: new Date() }
+                ]);
+            } else {
+                this.selectedWorkoutTemplate = templates[0].id;
+            }
+            
+            this.renderAllPages();
         } catch (error) {
-            console.error('Failed to open database:', error);
+            console.error('Failed to initialize app:', error);
         }
-    }
+    },
 
     setupEventListeners() {
         // Navigation
@@ -50,85 +52,83 @@ class LifeTrackerApp {
             });
         });
 
+        // Module cards on dashboard
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.module-card')) {
+                const card = e.target.closest('.module-card');
+                const targetPage = card.getAttribute('data-page');
+                this.showPage(targetPage);
+            }
+        });
+
         // Settings button
         document.getElementById('settingsButton').addEventListener('click', () => {
             this.showPage('database');
         });
 
-        // Swipe functionality for hygiene habits
-        this.setupSwipeListeners();
-    }
+        // Modal handlers
+        this.setupModalHandlers();
+    },
 
-    setupSwipeListeners() {
-        document.addEventListener('touchstart', (e) => {
-            this.swipeStartX = e.changedTouches[0].screenX;
+    setupModalHandlers() {
+        // Dopamine modal
+        document.getElementById('closeDopamineModal').addEventListener('click', () => {
+            this.hideModal('dopamineModal');
         });
 
-        document.addEventListener('touchend', (e) => {
-            this.swipeEndX = e.changedTouches[0].screenX;
-            this.handleSwipe();
+        document.getElementById('cancelDopamineLog').addEventListener('click', () => {
+            this.hideModal('dopamineModal');
         });
-    }
 
-    handleSwipe() {
-        const swipeThreshold = 50;
-        const swipeDistance = this.swipeEndX - this.swipeStartX;
+        document.getElementById('saveDopamineLog').addEventListener('click', () => {
+            this.saveDopamineEntry();
+        });
 
-        if (Math.abs(swipeDistance) > swipeThreshold) {
-            const habitItem = document.elementFromPoint(this.swipeEndX, 100);
-            if (habitItem && habitItem.closest('.habit-item')) {
-                const habitId = parseInt(habitItem.closest('.habit-item').getAttribute('data-habit-id'));
-                if (swipeDistance > 0) {
-                    this.toggleHabitCompletion(habitId, true);
-                } else {
-                    this.toggleHabitCompletion(habitId, false);
-                }
-            }
-        }
-    }
+        // Habit modal
+        document.getElementById('closeHabitModal').addEventListener('click', () => {
+            this.hideModal('habitModal');
+        });
 
-    async toggleHabitCompletion(habitId, completed) {
-        const today = this.formatDate(new Date());
-        
-        try {
-            // Check if completion record already exists for today
-            const existingCompletion = await db.hygieneCompletions
-                .where('habitId').equals(habitId)
-                .and(item => item.date === today)
-                .first();
+        document.getElementById('cancelHabit').addEventListener('click', () => {
+            this.hideModal('habitModal');
+        });
 
-            if (existingCompletion) {
-                await db.hygieneCompletions.update(existingCompletion.id, { 
-                    completed,
-                    createdAt: new Date()
-                });
-            } else {
-                await db.hygieneCompletions.add({
-                    habitId,
-                    date: today,
-                    completed,
-                    createdAt: new Date()
-                });
-            }
+        document.getElementById('saveHabit').addEventListener('click', () => {
+            this.saveHabit();
+        });
 
-            await this.updateDailyCompletion();
-            this.renderHygienePage();
-            this.renderDashboard();
-        } catch (error) {
-            console.error('Error toggling habit completion:', error);
-        }
-    }
+        // Workout modal
+        document.getElementById('closeWorkoutModal').addEventListener('click', () => {
+            this.hideModal('workoutModal');
+        });
 
-    async loadAllData() {
-        // This method would load all necessary data from IndexedDB
-        // For now, we'll render pages directly from the database
-    }
+        document.getElementById('cancelWorkout').addEventListener('click', () => {
+            this.hideModal('workoutModal');
+        });
+
+        document.getElementById('saveWorkout').addEventListener('click', () => {
+            this.saveWorkoutTemplate();
+        });
+
+        // Exercise modal
+        document.getElementById('closeExerciseModal').addEventListener('click', () => {
+            this.hideModal('exerciseModal');
+        });
+
+        document.getElementById('cancelExercise').addEventListener('click', () => {
+            this.hideModal('exerciseModal');
+        });
+
+        document.getElementById('saveExercise').addEventListener('click', () => {
+            this.saveExercise();
+        });
+    },
 
     updateCurrentDate() {
         const options = { year: 'numeric', month: 'long', day: 'numeric' };
         document.getElementById('currentDate').textContent = 
             this.currentDate.toLocaleDateString('en-US', options);
-    }
+    },
 
     showPage(pageId) {
         // Update navigation
@@ -163,116 +163,92 @@ class LifeTrackerApp {
                 this.renderDatabasePage();
                 break;
         }
-    }
+    },
 
-    // Dashboard Rendering
+    hideModal(modalId) {
+        document.getElementById(modalId).classList.remove('active');
+    },
+
+    showModal(modalId) {
+        document.getElementById(modalId).classList.add('active');
+    },
+
+    formatDate(date) {
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    },
+
+    // Dashboard
     async renderDashboard() {
-        const dashboardEl = document.getElementById('dashboard');
+        const today = this.formatDate(new Date());
+        const currentStreak = await this.calculateCurrentStreak();
+        const completionRate = await this.calculateTodayCompletion(today);
+
+        document.getElementById('currentStreak').textContent = currentStreak;
+        document.getElementById('todayCompletion').textContent = completionRate + '%';
+
+        // Render calendar
+        this.renderDashboardCalendar();
+    },
+
+    async renderDashboardCalendar() {
+        const calendarEl = document.getElementById('dashboardCalendar');
+        const now = new Date();
+        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
         
-        // Calculate completion rate for today
-        const todayCompletion = await this.calculateTodayCompletion();
+        let calendarHTML = '';
         
-        dashboardEl.innerHTML = `
-            <div class="welcome-card">
-                <h2>Welcome back!</h2>
-                <p>Your journey to self-improvement continues</p>
-                
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-value">${await this.getCurrentStreak()}</div>
-                        <div class="stat-label">Day Streak</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value">${todayCompletion}%</div>
-                        <div class="stat-label">Today's Completion</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">Today's Overview</div>
-                    <div class="card-more">
-                        <i class="fas fa-ellipsis-h"></i>
-                    </div>
-                </div>
-                
-                <div class="module-card" data-page="dopamine">
-                    <div class="module-icon" style="background: var(--ig-primary);">
-                        <i class="fas fa-brain"></i>
-                    </div>
-                    <div class="module-info">
-                        <div class="module-title">Dopamine Control</div>
-                        <div class="module-desc">${await this.getCurrentStreak()}-day streak • Log today's status</div>
-                    </div>
-                    <div class="module-arrow">
-                        <i class="fas fa-chevron-right"></i>
-                    </div>
-                </div>
-                
-                <div class="module-card" data-page="hygiene">
-                    <div class="module-icon" style="background: var(--ig-blue);">
-                        <i class="fas fa-shower"></i>
-                    </div>
-                    <div class="module-info">
-                        <div class="module-title">Personal Hygiene</div>
-                        <div class="module-desc">${await this.getTodaysHygieneCompletion()}</div>
-                    </div>
-                    <div class="module-arrow">
-                        <i class="fas fa-chevron-right"></i>
-                    </div>
-                </div>
-                
-                <div class="module-card" data-page="workout">
-                    <div class="module-icon" style="background: var(--success);">
-                        <i class="fas fa-dumbbell"></i>
-                    </div>
-                    <div class="module-info">
-                        <div class="module-title">Workout</div>
-                        <div class="module-desc">${await this.getTodaysWorkoutStatus()}</div>
-                    </div>
-                    <div class="module-arrow">
-                        <i class="fas fa-chevron-right"></i>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">Weekly Progress</div>
-                    <div class="card-more">
-                        <i class="fas fa-ellipsis-h"></i>
-                    </div>
-                </div>
-                
-                <div class="calendar-container">
-                    ${this.renderCalendar(this.currentDate, 'dashboard')}
-                </div>
-            </div>
-        `;
-
-        // Add event listeners to module cards
-        dashboardEl.querySelectorAll('.module-card').forEach(card => {
-            card.addEventListener('click', () => {
-                const targetPage = card.getAttribute('data-page');
-                this.showPage(targetPage);
-            });
+        // Day headers
+        const days = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+        days.forEach(day => {
+            calendarHTML += `<div class="calendar-day empty"><div class="day-name">${day}</div></div>`;
         });
-    }
+        
+        // Empty days before first day of month
+        for (let i = 0; i < firstDay.getDay(); i++) {
+            calendarHTML += '<div class="calendar-day empty"></div>';
+        }
+        
+        // Days of the month
+        for (let i = 1; i <= lastDay.getDate(); i++) {
+            const dayDate = new Date(now.getFullYear(), now.getMonth(), i);
+            const dateKey = this.formatDate(dayDate);
+            let dayClass = 'calendar-day future';
+            
+            // Check if it's today
+            if (i === now.getDate() && now.getMonth() === now.getMonth() && now.getFullYear() === now.getFullYear()) {
+                dayClass += ' current';
+            }
+            
+            // Check dopamine status for this day
+            const dopamineEntry = await db.dopamineEntries.where('date').equals(dateKey).first();
+            if (dopamineEntry) {
+                dayClass += dopamineEntry.status === 'passed' ? ' passed' : ' failed';
+            }
+            
+            calendarHTML += `
+                <div class="${dayClass}" data-date="${dateKey}">
+                    <div class="day-number">${i}</div>
+                </div>
+            `;
+        }
+        
+        calendarEl.innerHTML = calendarHTML;
+    },
 
-    // Dopamine Page Rendering
+    // Dopamine Page
     async renderDopaminePage() {
         const dopamineEl = document.getElementById('dopamine');
-        const currentStreak = await this.getCurrentStreak();
-        const longestStreak = await this.getLongestStreak();
+        const currentStreak = await this.calculateCurrentStreak();
+        const longestStreak = await this.calculateLongestStreak();
         const recentEntries = await this.getRecentDopamineEntries();
-        
+
         dopamineEl.innerHTML = `
             <div class="card">
                 <div class="card-header">
                     <div class="card-title">Dopamine Control</div>
-                    <div class="card-more">
-                        <i class="fas fa-ellipsis-h"></i>
+                    <div class="card-more" id="dopamineCalendarNav">
+                        <i class="fas fa-calendar"></i>
                     </div>
                 </div>
                 
@@ -289,7 +265,9 @@ class LifeTrackerApp {
                         </div>
                     </div>
                     
-                    ${this.renderCalendar(this.currentViewMonth, 'dopamine')}
+                    <div class="calendar" id="dopamineCalendar">
+                        ${await this.renderDopamineCalendar()}
+                    </div>
                 </div>
                 
                 <div class="streak-display">
@@ -303,19 +281,23 @@ class LifeTrackerApp {
                     </div>
                 </div>
                 
-                <button class="btn btn-primary" id="logDopamineStatus">Log Today's Status</button>
+                <button class="btn btn-primary" id="logDopamineStatus">
+                    <i class="fas fa-plus"></i> Log Today's Status
+                </button>
             </div>
             
             <div class="card">
                 <div class="card-header">
                     <div class="card-title">Recent Entries</div>
-                    <div class="card-more">
-                        <i class="fas fa-ellipsis-h"></i>
-                    </div>
                 </div>
-                
                 <div id="dopamineEntries">
-                    ${recentEntries}
+                    ${recentEntries.length > 0 ? recentEntries : `
+                        <div class="empty-state">
+                            <i class="fas fa-brain"></i>
+                            <p>No entries yet</p>
+                            <p>Start tracking your progress today!</p>
+                        </div>
+                    `}
                 </div>
             </div>
         `;
@@ -334,15 +316,156 @@ class LifeTrackerApp {
         document.getElementById('logDopamineStatus').addEventListener('click', () => {
             this.showDopamineModal();
         });
-    }
 
-    // Hygiene Page Rendering
+        // Add click handlers for entries
+        dopamineEl.querySelectorAll('.edit-dopamine').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const entryId = parseInt(btn.getAttribute('data-id'));
+                this.editDopamineEntry(entryId);
+            });
+        });
+    },
+
+    async renderDopamineCalendar() {
+        const firstDay = new Date(this.currentViewMonth.getFullYear(), this.currentViewMonth.getMonth(), 1);
+        const lastDay = new Date(this.currentViewMonth.getFullYear(), this.currentViewMonth.getMonth() + 1, 0);
+        const today = new Date();
+        
+        let calendarHTML = '';
+        
+        // Day headers
+        const days = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+        days.forEach(day => {
+            calendarHTML += `<div class="calendar-day empty"><div class="day-name">${day}</div></div>`;
+        });
+        
+        // Empty days before first day of month
+        for (let i = 0; i < firstDay.getDay(); i++) {
+            calendarHTML += '<div class="calendar-day empty"></div>';
+        }
+        
+        // Days of the month
+        for (let i = 1; i <= lastDay.getDate(); i++) {
+            const dayDate = new Date(this.currentViewMonth.getFullYear(), this.currentViewMonth.getMonth(), i);
+            const dateKey = this.formatDate(dayDate);
+            let dayClass = 'calendar-day future';
+            
+            // Check if it's today
+            if (i === today.getDate() && this.currentViewMonth.getMonth() === today.getMonth() && this.currentViewMonth.getFullYear() === today.getFullYear()) {
+                dayClass += ' current';
+            }
+            
+            // Check dopamine status
+            const dopamineEntry = await db.dopamineEntries.where('date').equals(dateKey).first();
+            if (dopamineEntry) {
+                dayClass += dopamineEntry.status === 'passed' ? ' passed' : ' failed';
+                if (dopamineEntry.notes) {
+                    dayClass += ' has-notes';
+                }
+            }
+            
+            calendarHTML += `
+                <div class="${dayClass}" data-date="${dateKey}">
+                    <div class="day-number">${i}</div>
+                </div>
+            `;
+        }
+        
+        return calendarHTML;
+    },
+
+    showDopamineModal(entry = null) {
+        const today = this.formatDate(new Date());
+        document.getElementById('dopamineDate').value = entry ? entry.date : today;
+        document.getElementById('dopamineStatus').value = entry ? entry.status : 'passed';
+        document.getElementById('dopamineNotes').value = entry ? entry.notes : '';
+        
+        if (entry) {
+            document.querySelector('#dopamineModal .modal-title').textContent = 'Edit Dopamine Entry';
+            document.getElementById('saveDopamineLog').setAttribute('data-edit-id', entry.id);
+        } else {
+            document.querySelector('#dopamineModal .modal-title').textContent = 'Log Dopamine Status';
+            document.getElementById('saveDopamineLog').removeAttribute('data-edit-id');
+        }
+        
+        this.showModal('dopamineModal');
+    },
+
+    async saveDopamineEntry() {
+        const date = document.getElementById('dopamineDate').value;
+        const status = document.getElementById('dopamineStatus').value;
+        const notes = document.getElementById('dopamineNotes').value;
+        const editId = document.getElementById('saveDopamineLog').getAttribute('data-edit-id');
+
+        if (!date) {
+            alert('Please select a date');
+            return;
+        }
+
+        try {
+            if (editId) {
+                // Update existing entry
+                await db.dopamineEntries.update(parseInt(editId), {
+                    date,
+                    status,
+                    notes,
+                    createdAt: new Date()
+                });
+            } else {
+                // Create new entry
+                await db.dopamineEntries.add({
+                    date,
+                    status,
+                    notes,
+                    createdAt: new Date()
+                });
+            }
+
+            this.hideModal('dopamineModal');
+            this.renderDopaminePage();
+            this.renderDashboard();
+        } catch (error) {
+            console.error('Error saving dopamine entry:', error);
+            alert('Error saving entry. Please try again.');
+        }
+    },
+
+    async getRecentDopamineEntries() {
+        const entries = await db.dopamineEntries.orderBy('date').reverse().limit(5).toArray();
+        
+        return entries.map(entry => `
+            <div class="log-entry">
+                <div class="log-date">
+                    ${new Date(entry.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                    <div class="log-actions">
+                        <div class="log-action edit-dopamine" data-id="${entry.id}">
+                            <i class="fas fa-edit"></i>
+                        </div>
+                    </div>
+                </div>
+                <div class="log-status ${entry.status === 'passed' ? 'status-passed' : 'status-failed'}">
+                    ${entry.status === 'passed' ? 'Successful Day' : 'Challenging Day'}
+                </div>
+                <div class="log-notes">${entry.notes || 'No notes'}</div>
+            </div>
+        `).join('');
+    },
+
+    async editDopamineEntry(entryId) {
+        const entry = await db.dopamineEntries.get(entryId);
+        if (entry) {
+            this.showDopamineModal(entry);
+        }
+    },
+
+    // Hygiene Page
     async renderHygienePage() {
         const hygieneEl = document.getElementById('hygiene');
         const habits = await db.hygieneHabits.toArray();
         const today = this.formatDate(new Date());
         const completionRate = await this.calculateHygieneCompletion(today);
-        
+
         let habitsHTML = '';
         for (const habit of habits) {
             const completed = await this.isHabitCompletedToday(habit.id);
@@ -371,7 +494,12 @@ class LifeTrackerApp {
                     </div>
                 </div>
                 
-                ${habitsHTML}
+                ${habitsHTML || `
+                    <div class="empty-state">
+                        <i class="fas fa-shower"></i>
+                        <p>No habits added yet</p>
+                    </div>
+                `}
                 
                 <div class="completion-card">
                     <div class="completion-value">${completionRate}%</div>
@@ -386,9 +514,6 @@ class LifeTrackerApp {
             <div class="card mt-20">
                 <div class="card-header">
                     <div class="card-title">Hygiene Calendar</div>
-                    <div class="card-more">
-                        <i class="fas fa-ellipsis-h"></i>
-                    </div>
                 </div>
                 
                 <div class="calendar-container">
@@ -404,7 +529,9 @@ class LifeTrackerApp {
                         </div>
                     </div>
                     
-                    ${await this.renderHygieneCalendar()}
+                    <div class="calendar" id="hygieneCalendar">
+                        ${await this.renderHygieneCalendar()}
+                    </div>
                 </div>
             </div>
         `;
@@ -427,21 +554,168 @@ class LifeTrackerApp {
         // Add click handlers for habits
         hygieneEl.querySelectorAll('.habit-item').forEach(item => {
             item.addEventListener('click', (e) => {
-                if (!e.target.closest('.habit-check')) {
-                    const habitId = parseInt(item.getAttribute('data-habit-id'));
-                    const completed = item.classList.contains('swipe-completed');
-                    this.toggleHabitCompletion(habitId, !completed);
-                }
+                const habitId = parseInt(item.getAttribute('data-habit-id'));
+                const completed = item.classList.contains('swipe-completed');
+                this.toggleHabitCompletion(habitId, !completed);
             });
         });
-    }
+    },
 
-    // Workout Page Rendering
+    getHabitIcon(habitName) {
+        const icons = {
+            'Brush Teeth': 'tooth',
+            'Face Wash': 'water',
+            'Bath / Shower': 'bath',
+            'Hair Care': 'wind',
+            'Perfume / Cologne': 'spray-can'
+        };
+        return icons[habitName] || 'check-circle';
+    },
+
+    async toggleHabitCompletion(habitId, completed) {
+        const today = this.formatDate(new Date());
+        
+        try {
+            // Check if completion record already exists for today
+            const existingCompletion = await db.hygieneCompletions
+                .where('habitId').equals(habitId)
+                .and(item => item.date === today)
+                .first();
+
+            if (existingCompletion) {
+                await db.hygieneCompletions.update(existingCompletion.id, { 
+                    completed,
+                    createdAt: new Date()
+                });
+            } else {
+                await db.hygieneCompletions.add({
+                    habitId,
+                    date: today,
+                    completed,
+                    createdAt: new Date()
+                });
+            }
+
+            await this.updateDailyCompletion();
+            this.renderHygienePage();
+            this.renderDashboard();
+        } catch (error) {
+            console.error('Error toggling habit completion:', error);
+        }
+    },
+
+    async isHabitCompletedToday(habitId) {
+        const today = this.formatDate(new Date());
+        const completion = await db.hygieneCompletions
+            .where('habitId').equals(habitId)
+            .and(item => item.date === today)
+            .first();
+        
+        return completion ? completion.completed : false;
+    },
+
+    async calculateHygieneCompletion(date) {
+        const habits = await db.hygieneHabits.toArray();
+        const completions = await db.hygieneCompletions.where('date').equals(date).toArray();
+        
+        let completedCount = 0;
+        habits.forEach(habit => {
+            const completion = completions.find(c => c.habitId === habit.id);
+            if (completion && completion.completed) {
+                completedCount++;
+            }
+        });
+        
+        return habits.length > 0 ? Math.round((completedCount / habits.length) * 100) : 0;
+    },
+
+    async renderHygieneCalendar() {
+        const firstDay = new Date(this.hygieneViewMonth.getFullYear(), this.hygieneViewMonth.getMonth(), 1);
+        const lastDay = new Date(this.hygieneViewMonth.getFullYear(), this.hygieneViewMonth.getMonth() + 1, 0);
+        const today = new Date();
+        
+        let calendarHTML = '';
+        
+        // Day headers
+        const days = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+        days.forEach(day => {
+            calendarHTML += `<div class="calendar-day empty"><div class="day-name">${day}</div></div>`;
+        });
+        
+        // Empty days before first day of month
+        for (let i = 0; i < firstDay.getDay(); i++) {
+            calendarHTML += '<div class="calendar-day empty"></div>';
+        }
+        
+        // Days of the month
+        for (let i = 1; i <= lastDay.getDate(); i++) {
+            const dayDate = new Date(this.hygieneViewMonth.getFullYear(), this.hygieneViewMonth.getMonth(), i);
+            const dateKey = this.formatDate(dayDate);
+            let dayClass = 'calendar-day future';
+            
+            // Check if it's today
+            if (i === today.getDate() && this.hygieneViewMonth.getMonth() === today.getMonth() && this.hygieneViewMonth.getFullYear() === today.getFullYear()) {
+                dayClass += ' current';
+            }
+            
+            // Check hygiene completion for this day
+            const completionRate = await this.calculateHygieneCompletion(dateKey);
+            if (completionRate >= 80) {
+                dayClass += ' passed';
+            } else if (completionRate > 0) {
+                // Partial completion - could add a different style
+                dayClass += ' future'; // Keep as future for now
+            }
+            
+            calendarHTML += `
+                <div class="${dayClass}" data-date="${dateKey}">
+                    <div class="day-number">${i}</div>
+                </div>
+            `;
+        }
+        
+        return calendarHTML;
+    },
+
+    showHabitModal() {
+        document.getElementById('habitName').value = '';
+        document.getElementById('habitDescription').value = '';
+        this.showModal('habitModal');
+    },
+
+    async saveHabit() {
+        const name = document.getElementById('habitName').value;
+        const description = document.getElementById('habitDescription').value;
+
+        if (!name) {
+            alert('Please enter a habit name');
+            return;
+        }
+
+        try {
+            // Get the next order value
+            const habits = await db.hygieneHabits.toArray();
+            const nextOrder = habits.length > 0 ? Math.max(...habits.map(h => h.order)) + 1 : 1;
+
+            await db.hygieneHabits.add({
+                name,
+                description,
+                order: nextOrder,
+                createdAt: new Date()
+            });
+
+            this.hideModal('habitModal');
+            this.renderHygienePage();
+        } catch (error) {
+            console.error('Error saving habit:', error);
+            alert('Error saving habit. Please try again.');
+        }
+    },
+
+    // Workout Page (simplified for now)
     async renderWorkoutPage() {
         const workoutEl = document.getElementById('workout');
         const templates = await db.workoutTemplates.toArray();
-        const selectedTemplate = await db.workoutTemplates.get(this.selectedWorkoutTemplate);
-        const exercises = selectedTemplate ? await db.workoutExercises.where('templateId').equals(selectedTemplate.id).toArray() : [];
         
         let templatesHTML = '';
         templates.forEach(template => {
@@ -452,43 +726,10 @@ class LifeTrackerApp {
             `;
         });
 
-        let exercisesHTML = '';
-        for (const exercise of exercises) {
-            const sets = await db.workoutSets.where('exerciseId').equals(exercise.id).toArray();
-            exercisesHTML += `
-                <div class="exercise-card">
-                    <div class="exercise-header">
-                        <div class="exercise-name">${exercise.name}</div>
-                        <div class="exercise-pr">PR: ${exercise.pr}</div>
-                    </div>
-                    <div class="sets-container">
-                        ${sets.map((set, index) => `
-                            <div class="set-row">
-                                <div class="set-number">${index + 1}</div>
-                                <div class="set-input">
-                                    <div class="input-group">
-                                        <label>Weight</label>
-                                        <input type="text" value="${set.weight}" data-exercise="${exercise.id}" data-set="${set.id}" data-field="weight">
-                                    </div>
-                                    <div class="input-group">
-                                        <label>Reps</label>
-                                        <input type="text" value="${set.reps}" data-exercise="${exercise.id}" data-set="${set.id}" data-field="reps">
-                                    </div>
-                                </div>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-            `;
-        }
-
         workoutEl.innerHTML = `
             <div class="card">
                 <div class="card-header">
                     <div class="card-title">Workout Tracker</div>
-                    <div class="card-more">
-                        <i class="fas fa-ellipsis-h"></i>
-                    </div>
                 </div>
                 
                 <div class="workout-selector" id="workoutTemplates">
@@ -519,29 +760,18 @@ class LifeTrackerApp {
                         </div>
                     </div>
                     
-                    ${this.renderCalendar(this.workoutViewMonth, 'workout')}
+                    <div class="calendar" id="workoutCalendar">
+                        ${await this.renderWorkoutCalendar()}
+                    </div>
                 </div>
             </div>
             
-            ${exercisesHTML}
-            
-            <button class="btn btn-primary mt-20" id="completeWorkout">
-                <i class="fas fa-check-circle"></i> Complete Workout
-            </button>
-
-            <button class="btn btn-secondary mt-10" id="addExercise">
-                <i class="fas fa-plus"></i> Add Exercise
-            </button>
+            <div id="workoutExercisesContent">
+                ${await this.renderWorkoutExercises()}
+            </div>
         `;
 
         // Add event listeners
-        workoutEl.querySelectorAll('.workout-option[data-template-id]').forEach(option => {
-            option.addEventListener('click', () => {
-                this.selectedWorkoutTemplate = parseInt(option.getAttribute('data-template-id'));
-                this.renderWorkoutPage();
-            });
-        });
-
         document.getElementById('addWorkoutTemplate').addEventListener('click', () => {
             this.showWorkoutModal();
         });
@@ -554,14 +784,6 @@ class LifeTrackerApp {
             this.logWorkoutDay('missed');
         });
 
-        document.getElementById('completeWorkout').addEventListener('click', () => {
-            this.logWorkoutDay('completed');
-        });
-
-        document.getElementById('addExercise').addEventListener('click', () => {
-            this.showExerciseModal();
-        });
-
         document.getElementById('prevWorkoutMonth').addEventListener('click', () => {
             this.workoutViewMonth.setMonth(this.workoutViewMonth.getMonth() - 1);
             this.renderWorkoutPage();
@@ -572,20 +794,195 @@ class LifeTrackerApp {
             this.renderWorkoutPage();
         });
 
-        // Add input change handlers
-        workoutEl.querySelectorAll('.set-input input').forEach(input => {
-            input.addEventListener('change', (e) => {
-                this.updateWorkoutSet(
-                    parseInt(e.target.getAttribute('data-exercise')),
-                    parseInt(e.target.getAttribute('data-set')),
-                    e.target.getAttribute('data-field'),
-                    e.target.value
-                );
+        // Template selection
+        workoutEl.querySelectorAll('.workout-option[data-template-id]').forEach(option => {
+            option.addEventListener('click', () => {
+                this.selectedWorkoutTemplate = parseInt(option.getAttribute('data-template-id'));
+                this.renderWorkoutPage();
             });
         });
-    }
+    },
 
-    // Database Page Rendering
+    async renderWorkoutCalendar() {
+        const firstDay = new Date(this.workoutViewMonth.getFullYear(), this.workoutViewMonth.getMonth(), 1);
+        const lastDay = new Date(this.workoutViewMonth.getFullYear(), this.workoutViewMonth.getMonth() + 1, 0);
+        const today = new Date();
+        
+        let calendarHTML = '';
+        
+        // Day headers
+        const days = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+        days.forEach(day => {
+            calendarHTML += `<div class="calendar-day empty"><div class="day-name">${day}</div></div>`;
+        });
+        
+        // Empty days before first day of month
+        for (let i = 0; i < firstDay.getDay(); i++) {
+            calendarHTML += '<div class="calendar-day empty"></div>';
+        }
+        
+        // Days of the month
+        for (let i = 1; i <= lastDay.getDate(); i++) {
+            const dayDate = new Date(this.workoutViewMonth.getFullYear(), this.workoutViewMonth.getMonth(), i);
+            const dateKey = this.formatDate(dayDate);
+            let dayClass = 'calendar-day future';
+            
+            // Check if it's today
+            if (i === today.getDate() && this.workoutViewMonth.getMonth() === today.getMonth() && this.workoutViewMonth.getFullYear() === today.getFullYear()) {
+                dayClass += ' current';
+            }
+            
+            // Check workout history
+            const workoutEntry = await db.workoutHistory.where('date').equals(dateKey).first();
+            if (workoutEntry) {
+                if (workoutEntry.type === 'completed') {
+                    dayClass += ' passed';
+                } else if (workoutEntry.type === 'rest' || workoutEntry.type === 'missed') {
+                    dayClass += ' failed';
+                }
+            }
+            
+            calendarHTML += `
+                <div class="${dayClass}" data-date="${dateKey}">
+                    <div class="day-number">${i}</div>
+                </div>
+            `;
+        }
+        
+        return calendarHTML;
+    },
+
+    async renderWorkoutExercises() {
+        if (!this.selectedWorkoutTemplate) {
+            return `
+                <div class="card">
+                    <div class="empty-state">
+                        <i class="fas fa-dumbbell"></i>
+                        <p>Select a workout template to view exercises</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        const exercises = await db.workoutExercises
+            .where('templateId')
+            .equals(this.selectedWorkoutTemplate)
+            .toArray();
+
+        if (exercises.length === 0) {
+            return `
+                <div class="card">
+                    <div class="empty-state">
+                        <i class="fas fa-dumbbell"></i>
+                        <p>No exercises in this template</p>
+                        <button class="btn btn-primary mt-20" id="addExerciseBtn">
+                            <i class="fas fa-plus"></i> Add Exercise
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        let exercisesHTML = '';
+        for (const exercise of exercises) {
+            exercisesHTML += `
+                <div class="exercise-card">
+                    <div class="exercise-header">
+                        <div class="exercise-name">${exercise.name}</div>
+                        <div class="exercise-pr">${exercise.pr ? 'PR: ' + exercise.pr : 'No PR set'}</div>
+                    </div>
+                    <div class="sets-container">
+                        <div class="set-row">
+                            <div class="set-number">1</div>
+                            <div class="set-input">
+                                <div class="input-group">
+                                    <label>Weight</label>
+                                    <input type="text" placeholder="e.g., 50 lbs">
+                                </div>
+                                <div class="input-group">
+                                    <label>Reps</label>
+                                    <input type="text" placeholder="e.g., 12">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        return exercisesHTML + `
+            <button class="btn btn-primary mt-20" id="completeWorkout">
+                <i class="fas fa-check-circle"></i> Complete Workout
+            </button>
+
+            <button class="btn btn-secondary mt-10" id="addExerciseBtn">
+                <i class="fas fa-plus"></i> Add Exercise
+            </button>
+        `;
+    },
+
+    showWorkoutModal() {
+        document.getElementById('workoutName').value = '';
+        this.showModal('workoutModal');
+    },
+
+    async saveWorkoutTemplate() {
+        const name = document.getElementById('workoutName').value;
+
+        if (!name) {
+            alert('Please enter a workout name');
+            return;
+        }
+
+        try {
+            const templateId = await db.workoutTemplates.add({
+                name,
+                createdAt: new Date()
+            });
+
+            this.selectedWorkoutTemplate = templateId;
+            this.hideModal('workoutModal');
+            this.renderWorkoutPage();
+        } catch (error) {
+            console.error('Error saving workout template:', error);
+            alert('Error saving workout template. Please try again.');
+        }
+    },
+
+    async logWorkoutDay(type) {
+        const today = this.formatDate(new Date());
+
+        try {
+            // Check if entry already exists for today
+            const existingEntry = await db.workoutHistory
+                .where('date')
+                .equals(today)
+                .first();
+
+            if (existingEntry) {
+                await db.workoutHistory.update(existingEntry.id, {
+                    type,
+                    createdAt: new Date()
+                });
+            } else {
+                await db.workoutHistory.add({
+                    date: today,
+                    type,
+                    createdAt: new Date()
+                });
+            }
+
+            await this.updateDailyCompletion();
+            this.renderWorkoutPage();
+            this.renderDashboard();
+            alert(`${type === 'rest' ? 'Rest day' : 'Missed workout'} logged successfully!`);
+        } catch (error) {
+            console.error('Error logging workout day:', error);
+            alert('Error logging workout day. Please try again.');
+        }
+    },
+
+    // Database Page
     async renderDatabasePage() {
         const databaseEl = document.getElementById('database');
         
@@ -595,7 +992,6 @@ class LifeTrackerApp {
         const workoutTemplates = await db.workoutTemplates.toArray();
         const workoutExercises = await db.workoutExercises.toArray();
         const workoutHistory = await db.workoutHistory.toArray();
-        const dailyCompletions = await db.dailyCompletion.toArray();
 
         databaseEl.innerHTML = `
             <div class="card">
@@ -623,7 +1019,7 @@ class LifeTrackerApp {
                                     <td>${entry.date}</td>
                                     <td>${entry.status}</td>
                                     <td>${entry.notes || ''}</td>
-                                    <td>
+                                    <td class="database-actions">
                                         <button class="log-action edit-dopamine" data-id="${entry.id}">
                                             <i class="fas fa-edit"></i>
                                         </button>
@@ -652,10 +1048,7 @@ class LifeTrackerApp {
                                 <tr>
                                     <td>${habit.name}</td>
                                     <td>${habit.description}</td>
-                                    <td>
-                                        <button class="log-action edit-habit" data-id="${habit.id}">
-                                            <i class="fas fa-edit"></i>
-                                        </button>
+                                    <td class="database-actions">
                                         <button class="log-action delete-habit" data-id="${habit.id}">
                                             <i class="fas fa-trash"></i>
                                         </button>
@@ -673,7 +1066,6 @@ class LifeTrackerApp {
                             <tr>
                                 <th>Date</th>
                                 <th>Type</th>
-                                <th>Template</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -682,8 +1074,7 @@ class LifeTrackerApp {
                                 <tr>
                                     <td>${history.date}</td>
                                     <td>${history.type}</td>
-                                    <td>${history.templateId}</td>
-                                    <td>
+                                    <td class="database-actions">
                                         <button class="log-action delete-workout" data-id="${history.id}">
                                             <i class="fas fa-trash"></i>
                                         </button>
@@ -711,13 +1102,6 @@ class LifeTrackerApp {
             });
         });
 
-        databaseEl.querySelectorAll('.edit-habit').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const habitId = parseInt(btn.getAttribute('data-id'));
-                this.editHabit(habitId);
-            });
-        });
-
         databaseEl.querySelectorAll('.delete-habit').forEach(btn => {
             btn.addEventListener('click', () => {
                 const habitId = parseInt(btn.getAttribute('data-id'));
@@ -731,197 +1115,120 @@ class LifeTrackerApp {
                 this.deleteWorkoutHistory(historyId);
             });
         });
-    }
+    },
 
-    // Calendar rendering function
-    renderCalendar(date, type) {
-        const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
-        const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+    async deleteDopamineEntry(entryId) {
+        if (confirm('Are you sure you want to delete this dopamine entry?')) {
+            try {
+                await db.dopamineEntries.delete(entryId);
+                this.renderDatabasePage();
+                this.renderDopaminePage();
+                this.renderDashboard();
+            } catch (error) {
+                console.error('Error deleting dopamine entry:', error);
+                alert('Error deleting entry. Please try again.');
+            }
+        }
+    },
+
+    async deleteHabit(habitId) {
+        if (confirm('Are you sure you want to delete this habit? This will also delete all completion records for this habit.')) {
+            try {
+                await db.hygieneHabits.delete(habitId);
+                // Also delete related completions
+                await db.hygieneCompletions.where('habitId').equals(habitId).delete();
+                this.renderDatabasePage();
+                this.renderHygienePage();
+                this.renderDashboard();
+            } catch (error) {
+                console.error('Error deleting habit:', error);
+                alert('Error deleting habit. Please try again.');
+            }
+        }
+    },
+
+    async deleteWorkoutHistory(historyId) {
+        if (confirm('Are you sure you want to delete this workout history entry?')) {
+            try {
+                await db.workoutHistory.delete(historyId);
+                this.renderDatabasePage();
+                this.renderWorkoutPage();
+                this.renderDashboard();
+            } catch (error) {
+                console.error('Error deleting workout history:', error);
+                alert('Error deleting workout history. Please try again.');
+            }
+        }
+    },
+
+    // Calculation methods
+    async calculateCurrentStreak() {
+        const entries = await db.dopamineEntries.orderBy('date').toArray();
+        let currentStreak = 0;
         const today = new Date();
         
-        let calendarHTML = '';
-        
-        // Day headers
-        const days = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-        days.forEach(day => {
-            calendarHTML += `<div class="calendar-day empty"><div class="day-name">${day}</div></div>`;
-        });
-        
-        // Empty days before first day of month
-        for (let i = 0; i < firstDay.getDay(); i++) {
-            calendarHTML += '<div class="calendar-day empty"></div>';
+        // Start from today and go backwards
+        for (let i = 0; i < 365; i++) { // Check up to a year back
+            const checkDate = new Date(today);
+            checkDate.setDate(today.getDate() - i);
+            const dateKey = this.formatDate(checkDate);
+            
+            const entry = entries.find(e => e.date === dateKey);
+            if (entry && entry.status === 'passed') {
+                currentStreak++;
+            } else {
+                break;
+            }
         }
         
-        // Days of the month
-        for (let i = 1; i <= lastDay.getDate(); i++) {
-            const dayDate = new Date(date.getFullYear(), date.getMonth(), i);
-            const dateKey = this.formatDate(dayDate);
-            let dayClass = 'calendar-day future';
-            
-            // Check if it's today
-            if (i === today.getDate() && date.getMonth() === today.getMonth() && date.getFullYear() === today.getFullYear()) {
-                dayClass += ' current';
+        return currentStreak;
+    },
+
+    async calculateLongestStreak() {
+        const entries = await db.dopamineEntries.orderBy('date').toArray();
+        let longestStreak = 0;
+        let currentStreak = 0;
+        
+        // Sort entries by date
+        entries.sort((a, b) => new Date(a.date) - new Date(b.date));
+        
+        for (const entry of entries) {
+            if (entry.status === 'passed') {
+                currentStreak++;
+                longestStreak = Math.max(longestStreak, currentStreak);
+            } else {
+                currentStreak = 0;
             }
-            
-            // For dopamine calendar, check status
-            if (type === 'dopamine') {
-                // This would check dopamine entries from database
-                // For now, we'll use a simple pattern
-                if (i % 7 !== 0 && i <= today.getDate()) {
-                    dayClass += ' passed';
-                } else if (i % 7 === 0 && i <= today.getDate()) {
-                    dayClass += ' failed';
-                }
-            }
-            
-            // For workout calendar
-            if (type === 'workout') {
-                // This would check workout history from database
-                // For now, we'll use a simple pattern
-                if (i % 3 === 0 && i <= today.getDate()) {
-                    dayClass += ' passed'; // Workout completed
-                } else if (i % 5 === 0 && i <= today.getDate()) {
-                    dayClass += ' failed'; // Rest day or missed
-                }
-            }
-            
-            calendarHTML += `
-                <div class="${dayClass}" data-date="${dateKey}">
-                    <div class="day-number">${i}</div>
-                </div>
-            `;
         }
         
-        return calendarHTML;
-    }
+        return longestStreak;
+    },
 
-    // Helper methods
-    formatDate(date) {
-        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-    }
-
-    getHabitIcon(habitName) {
-        const icons = {
-            'Brush Teeth': 'tooth',
-            'Face Wash': 'water',
-            'Bath / Shower': 'bath',
-            'Hair Care': 'wind',
-            'Perfume / Cologne': 'spray-can'
-        };
-        return icons[habitName] || 'check-circle';
-    }
-
-    // Data methods (to be implemented)
-    async getCurrentStreak() {
-        // Implement streak calculation from dopamine entries
-        return 14;
-    }
-
-    async getLongestStreak() {
-        // Implement longest streak calculation
-        return 21;
-    }
-
-    async getRecentDopamineEntries() {
-        const entries = await db.dopamineEntries.orderBy('date').reverse().limit(5).toArray();
-        return entries.map(entry => `
-            <div class="log-entry">
-                <div class="log-date">
-                    ${new Date(entry.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                    <div class="log-actions">
-                        <div class="log-action edit-entry" data-id="${entry.id}">
-                            <i class="fas fa-edit"></i>
-                        </div>
-                    </div>
-                </div>
-                <div class="log-status ${entry.status === 'passed' ? 'status-passed' : 'status-failed'}">
-                    ${entry.status === 'passed' ? 'Successful Day' : 'Challenging Day'}
-                </div>
-                <div class="log-notes">${entry.notes || 'No notes'}</div>
-            </div>
-        `).join('');
-    }
-
-    async calculateTodayCompletion() {
-        // Calculate completion based on dopamine, workout, and hygiene
-        const today = this.formatDate(new Date());
+    async calculateTodayCompletion(date) {
         let completion = 0;
         let totalItems = 3; // dopamine, workout, hygiene
         
         // Check dopamine
-        const dopamineEntry = await db.dopamineEntries.where('date').equals(today).first();
+        const dopamineEntry = await db.dopamineEntries.where('date').equals(date).first();
         if (dopamineEntry && dopamineEntry.status === 'passed') completion++;
         
         // Check workout
-        const workoutEntry = await db.workoutHistory.where('date').equals(today).first();
-        if (workoutEntry && workoutEntry.type === 'completed') completion++;
+        const workoutEntry = await db.workoutHistory.where('date').equals(date).first();
+        if (workoutEntry && (workoutEntry.type === 'completed' || workoutEntry.type === 'rest')) completion++;
         
         // Check hygiene
-        const hygieneCompletion = await this.calculateHygieneCompletion(today);
-        if (hygieneCompletion > 80) completion++;
+        const hygieneCompletion = await this.calculateHygieneCompletion(date);
+        if (hygieneCompletion >= 80) completion++;
         
         return Math.round((completion / totalItems) * 100);
-    }
-
-    async calculateHygieneCompletion(date) {
-        const habits = await db.hygieneHabits.toArray();
-        const completions = await db.hygieneCompletions.where('date').equals(date).toArray();
-        
-        let completedCount = 0;
-        habits.forEach(habit => {
-            const completion = completions.find(c => c.habitId === habit.id);
-            if (completion && completion.completed) {
-                completedCount++;
-            }
-        });
-        
-        return habits.length > 0 ? Math.round((completedCount / habits.length) * 100) : 0;
-    }
-
-    async isHabitCompletedToday(habitId) {
-        const today = this.formatDate(new Date());
-        const completion = await db.hygieneCompletions
-            .where('habitId').equals(habitId)
-            .and(item => item.date === today)
-            .first();
-        
-        return completion ? completion.completed : false;
-    }
-
-    async getTodaysHygieneCompletion() {
-        const today = this.formatDate(new Date());
-        const completionRate = await this.calculateHygieneCompletion(today);
-        const habits = await db.hygieneHabits.toArray();
-        const completions = await db.hygieneCompletions.where('date').equals(today).toArray();
-        const completedCount = completions.filter(c => c.completed).length;
-        
-        return `${completedCount}/${habits.length} completed • ${completionRate}% done`;
-    }
-
-    async getTodaysWorkoutStatus() {
-        const today = this.formatDate(new Date());
-        const workoutEntry = await db.workoutHistory.where('date').equals(today).first();
-        
-        if (workoutEntry) {
-            if (workoutEntry.type === 'completed') {
-                const template = await db.workoutTemplates.get(workoutEntry.templateId);
-                return `${template ? template.name : 'Workout'} • Completed`;
-            } else if (workoutEntry.type === 'rest') {
-                return 'Rest Day • Completed';
-            } else {
-                return 'Missed Workout';
-            }
-        } else {
-            return 'Not logged yet';
-        }
-    }
+    },
 
     async updateDailyCompletion() {
         const today = this.formatDate(new Date());
         const dopamineCompleted = await this.isDopamineCompletedToday();
         const workoutCompleted = await this.isWorkoutCompletedToday();
-        const hygieneCompleted = await this.calculateHygieneCompletion(today) > 80;
-        const totalCompletion = await this.calculateTodayCompletion();
+        const hygieneCompleted = await this.calculateHygieneCompletion(today) >= 80;
+        const totalCompletion = await this.calculateTodayCompletion(today);
         
         const existing = await db.dailyCompletion.where('date').equals(today).first();
         
@@ -943,86 +1250,21 @@ class LifeTrackerApp {
                 createdAt: new Date()
             });
         }
-    }
+    },
 
     async isDopamineCompletedToday() {
         const today = this.formatDate(new Date());
         const entry = await db.dopamineEntries.where('date').equals(today).first();
         return entry && entry.status === 'passed';
-    }
+    },
 
     async isWorkoutCompletedToday() {
         const today = this.formatDate(new Date());
         const entry = await db.workoutHistory.where('date').equals(today).first();
         return entry && (entry.type === 'completed' || entry.type === 'rest');
-    }
+    },
 
-    // Modal methods (to be implemented)
-    showDopamineModal() {
-        // Implementation for dopamine modal
-        console.log('Show dopamine modal');
-    }
-
-    showHabitModal() {
-        // Implementation for habit modal
-        console.log('Show habit modal');
-    }
-
-    showWorkoutModal() {
-        // Implementation for workout modal
-        console.log('Show workout modal');
-    }
-
-    showExerciseModal() {
-        // Implementation for exercise modal
-        console.log('Show exercise modal');
-    }
-
-    // Data update methods (to be implemented)
-    async updateWorkoutSet(exerciseId, setId, field, value) {
-        // Implementation for updating workout sets
-        console.log('Update workout set:', exerciseId, setId, field, value);
-    }
-
-    async logWorkoutDay(type) {
-        // Implementation for logging workout day
-        console.log('Log workout day:', type);
-    }
-
-    // Database edit/delete methods (to be implemented)
-    async editDopamineEntry(entryId) {
-        // Implementation for editing dopamine entry
-        console.log('Edit dopamine entry:', entryId);
-    }
-
-    async deleteDopamineEntry(entryId) {
-        // Implementation for deleting dopamine entry
-        console.log('Delete dopamine entry:', entryId);
-    }
-
-    async editHabit(habitId) {
-        // Implementation for editing habit
-        console.log('Edit habit:', habitId);
-    }
-
-    async deleteHabit(habitId) {
-        // Implementation for deleting habit
-        console.log('Delete habit:', habitId);
-    }
-
-    async deleteWorkoutHistory(historyId) {
-        // Implementation for deleting workout history
-        console.log('Delete workout history:', historyId);
-    }
-
-    // Hygiene calendar rendering
-    async renderHygieneCalendar() {
-        // This would render a calendar showing hygiene completion patterns
-        // For now, return a simple calendar
-        return this.renderCalendar(this.hygieneViewMonth, 'hygiene');
-    }
-
-    // Render all pages initially
+    // Initialize all pages
     renderAllPages() {
         this.renderDashboard();
         this.renderDopaminePage();
@@ -1030,9 +1272,22 @@ class LifeTrackerApp {
         this.renderWorkoutPage();
         this.renderDatabasePage();
     }
-}
+};
 
 // Initialize the app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    new LifeTrackerApp();
+    LifeTrackerApp.init();
 });
+
+// Service Worker Registration
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/service-worker.js')
+            .then(function(registration) {
+                console.log('ServiceWorker registration successful with scope: ', registration.scope);
+            })
+            .catch(function(error) {
+                console.log('ServiceWorker registration failed: ', error);
+            });
+    });
+}
