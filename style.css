@@ -46,18 +46,22 @@ body {
 
 /* iPhone 14 Pro specific container */
 .app-container {
-    width: 393px;
-    height: 852px;
+    width: 100vw;
+    height: 100vh;
+    max-width: 450px; /* optional: keeps it from being too wide on tablets */
+    max-height: 932px; /* optional max height for larger phones */
     background: var(--darker);
     position: relative;
     overflow: hidden;
-    border-radius: 48px;
+    border-radius: 2vw; /* relative radius */
     box-shadow: 
         0 0 0 1px rgba(255, 255, 255, 0.05),
         0 25px 50px -12px rgba(0, 0, 0, 0.8),
         0 0 100px rgba(225, 48, 108, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.05);
+    margin: 0 auto; /* center horizontally */
 }
+
 
 /* Dynamic background elements */
 .app-container::before {
@@ -322,9 +326,9 @@ body {
 
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 16px;
-    margin-top: 24px;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 4%;
+    margin-top: 4%;
 }
 
 .stat-card {
@@ -411,7 +415,7 @@ body {
 /* Calendar Styles - Fixed Alignment */
 .calendar-container {
     width: 100%;
-    overflow: hidden;
+    padding: 0 5%; /* gives small side padding on smaller screens */
 }
 
 .calendar-header {
