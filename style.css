@@ -412,7 +412,7 @@ body {
 
 /* Calendar Styles - COMPACT & PROPERLY ALIGNED */
 .calendar-container {
-    width: 100%;
+    width: 50%;
     overflow: hidden;
 }
 
