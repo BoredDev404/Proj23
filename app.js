@@ -1,6 +1,12 @@
 // app.js - Main application logic
 import db from './db.js';
 
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/service-worker.js')
+        .then(() => console.log("Service worker registered"))
+        .catch(err => console.error("SW registration failed:", err));
+}
+
 class LifeTrackerApp {
     constructor() {
         this.currentDate = new Date();
