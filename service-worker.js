@@ -1,5 +1,5 @@
 // service-worker.js
-const CACHE_NAME = 'life-tracker-v4';
+const CACHE_NAME = 'life-tracker-v4.1';
 const urlsToCache = [
   '/Proj23/',
   '/Proj23/index.html',
