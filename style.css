@@ -874,3 +874,46 @@ body.modal-open {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
 }
+
+/* Improved mobile experience */
+@media (max-width: 380px) {
+    .page {
+        padding: 12px;
+        padding-bottom: 65px;
+    }
+    
+    .card {
+        margin-bottom: 15px;
+    }
+    
+    .welcome-card {
+        padding: 20px 15px;
+    }
+    
+    .stats-grid {
+        gap: 10px;
+    }
+    
+    .stat-card {
+        padding: 12px;
+    }
+    
+    .stat-value {
+        font-size: 20px;
+    }
+}
+
+/* Safe area insets for notched devices */
+@supports(padding: max(0px)) {
+    .nav-bar {
+        padding-bottom: max(8px, env(safe-area-inset-bottom));
+    }
+    
+    body {
+        padding-bottom: max(60px, calc(60px + env(safe-area-inset-bottom)));
+    }
+    
+    .page {
+        padding-bottom: max(80px, calc(80px + env(safe-area-inset-bottom)));
+    }
+}
