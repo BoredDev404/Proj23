@@ -191,50 +191,82 @@ const LifeTrackerApp = {
     },
 
     async renderDashboardCalendar() {
-        const calendarEl = document.getElementById('dashboardCalendar');
-        const now = new Date();
-        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        
-        let calendarHTML = '';
-        
-        // Day headers
-        const days = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-        days.forEach(day => {
-            calendarHTML += `<div class="calendar-day empty"><div class="day-name">${day}</div></div>`;
-        });
-        
-        // Empty days before first day of month
-        for (let i = 0; i < firstDay.getDay(); i++) {
-            calendarHTML += '<div class="calendar-day empty"></div>';
-        }
-        
-        // Days of the month
-        for (let i = 1; i <= lastDay.getDate(); i++) {
-            const dayDate = new Date(now.getFullYear(), now.getMonth(), i);
-            const dateKey = this.formatDate(dayDate);
-            let dayClass = 'calendar-day future';
-            
-            // Check if it's today
-            if (i === now.getDate() && now.getMonth() === now.getMonth() && now.getFullYear() === now.getFullYear()) {
-                dayClass += ' current';
-            }
-            
-            // Check dopamine status for this day
-            const dopamineEntry = await db.dopamineEntries.where('date').equals(dateKey).first();
-            if (dopamineEntry) {
-                dayClass += dopamineEntry.status === 'passed' ? ' passed' : ' failed';
-            }
-            
-            calendarHTML += `
-                <div class="${dayClass}" data-date="${dateKey}">
-                    <div class="day-number">${i}</div>
+    const calendarEl = document.getElementById('dashboardCalendar');
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    
+    let calendarHTML = `
+        <div class="calendar-header">
+            <div class="calendar-month">${now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</div>
+            <div class="calendar-nav">
+                <div class="calendar-nav-btn" id="prevDashboardMonth">
+                    <i class="fas fa-chevron-left"></i>
                 </div>
-            `;
+                <div class="calendar-nav-btn" id="nextDashboardMonth">
+                    <i class="fas fa-chevron-right"></i>
+                </div>
+            </div>
+        </div>
+        <div class="calendar">
+    `;
+    
+    // Day headers
+    const days = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    days.forEach(day => {
+        calendarHTML += `<div class="calendar-day empty"><div class="day-name">${day}</div></div>`;
+    });
+    
+    // Empty days before first day of month
+    for (let i = 0; i < firstDay.getDay(); i++) {
+        calendarHTML += '<div class="calendar-day empty"></div>';
+    }
+    
+    // Days of the month
+    for (let i = 1; i <= lastDay.getDate(); i++) {
+        const dayDate = new Date(now.getFullYear(), now.getMonth(), i);
+        const dateKey = this.formatDate(dayDate);
+        let dayClass = 'calendar-day future';
+        
+        // Check if it's today
+        if (i === now.getDate() && now.getMonth() === new Date().getMonth() && now.getFullYear() === new Date().getFullYear()) {
+            dayClass += ' current';
         }
         
-        calendarEl.innerHTML = calendarHTML;
-    },
+        // Check dopamine status for this day
+        const dopamineEntry = await db.dopamineEntries.where('date').equals(dateKey).first();
+        if (dopamineEntry) {
+            dayClass += dopamineEntry.status === 'passed' ? ' passed' : ' failed';
+        }
+        
+        calendarHTML += `
+            <div class="${dayClass}" data-date="${dateKey}">
+                <div class="day-number">${i}</div>
+            </div>
+        `;
+    }
+    
+    calendarHTML += '</div>';
+    calendarEl.innerHTML = calendarHTML;
+
+    // Add event listeners for dashboard calendar navigation
+    const prevBtn = document.getElementById('prevDashboardMonth');
+    const nextBtn = document.getElementById('nextDashboardMonth');
+    
+    if (prevBtn) {
+        prevBtn.addEventListener('click', () => {
+            now.setMonth(now.getMonth() - 1);
+            this.renderDashboardCalendar();
+        });
+    }
+    
+    if (nextBtn) {
+        nextBtn.addEventListener('click', () => {
+            now.setMonth(now.getMonth() + 1);
+            this.renderDashboardCalendar();
+        });
+    }
+},
 
     // Dopamine Page
     async renderDopaminePage() {
