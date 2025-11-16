@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Life Tracker | Your Personal Growth Journey</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="style.css">
     <link rel="manifest" href="manifest.json">
 </head>
@@ -11,7 +12,7 @@
     <div class="app-container">
         <!-- Header -->
         <div class="header">
-            <div class="date-display" id="currentDate">April 26, 2023</div>
+            <div class="date-display" id="currentDate">Loading...</div>
             <div class="header-actions">
                 <div class="settings-icon" id="settingsButton">
                     <i class="fas fa-database"></i>
@@ -21,7 +22,73 @@
 
         <!-- Dashboard Page -->
         <div class="page active" id="dashboard">
-            <!-- Content will be populated by JavaScript -->
+            <div class="welcome-card">
+                <h2>Welcome to Life Tracker!</h2>
+                <p>Start your journey to self-improvement today</p>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="currentStreak">0</div>
+                        <div class="stat-label">Day Streak</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="todayCompletion">0%</div>
+                        <div class="stat-label">Today's Progress</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Quick Actions</div>
+                </div>
+                <div class="module-card" data-page="dopamine">
+                    <div class="module-icon" style="background: var(--ig-primary);">
+                        <i class="fas fa-brain"></i>
+                    </div>
+                    <div class="module-info">
+                        <div class="module-title">Dopamine Control</div>
+                        <div class="module-desc">Track your daily progress</div>
+                    </div>
+                    <div class="module-arrow">
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                </div>
+                
+                <div class="module-card" data-page="hygiene">
+                    <div class="module-icon" style="background: var(--ig-blue);">
+                        <i class="fas fa-shower"></i>
+                    </div>
+                    <div class="module-info">
+                        <div class="module-title">Personal Hygiene</div>
+                        <div class="module-desc">Daily routine tracker</div>
+                    </div>
+                    <div class="module-arrow">
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                </div>
+                
+                <div class="module-card" data-page="workout">
+                    <div class="module-icon" style="background: var(--success);">
+                        <i class="fas fa-dumbbell"></i>
+                    </div>
+                    <div class="module-info">
+                        <div class="module-title">Workout</div>
+                        <div class="module-desc">Exercise tracking</div>
+                    </div>
+                    <div class="module-arrow">
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">This Week</div>
+                </div>
+                <div class="calendar-container" id="dashboardCalendar">
+                    <!-- Calendar will be populated by JavaScript -->
+                </div>
+            </div>
         </div>
 
         <!-- Dopamine Tracker Page -->
@@ -72,11 +139,104 @@
             </div>
         </div>
 
-        <!-- Modals will be added by JavaScript -->
+        <!-- Modals -->
+        <div class="modal" id="dopamineModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div class="modal-title">Log Dopamine Status</div>
+                    <div class="modal-close" id="closeDopamineModal">
+                        <i class="fas fa-times"></i>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="dopamineDate">Date</label>
+                    <input type="date" id="dopamineDate" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label for="dopamineStatus">Status</label>
+                    <select id="dopamineStatus" class="form-control">
+                        <option value="passed">Successful Day</option>
+                        <option value="failed">Challenging Day</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="dopamineNotes">Notes (Optional)</label>
+                    <textarea id="dopamineNotes" class="form-control" placeholder="Add any notes about your day..."></textarea>
+                </div>
+                <div class="form-actions">
+                    <button class="btn btn-secondary" id="cancelDopamineLog">Cancel</button>
+                    <button class="btn btn-primary" id="saveDopamineLog">Save</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal" id="habitModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div class="modal-title">Add New Habit</div>
+                    <div class="modal-close" id="closeHabitModal">
+                        <i class="fas fa-times"></i>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="habitName">Habit Name</label>
+                    <input type="text" id="habitName" class="form-control" placeholder="e.g., Skincare routine">
+                </div>
+                <div class="form-group">
+                    <label for="habitDescription">Description (Optional)</label>
+                    <input type="text" id="habitDescription" class="form-control" placeholder="e.g., Morning and evening routine">
+                </div>
+                <div class="form-actions">
+                    <button class="btn btn-secondary" id="cancelHabit">Cancel</button>
+                    <button class="btn btn-primary" id="saveHabit">Save</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal" id="workoutModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div class="modal-title">Add New Workout</div>
+                    <div class="modal-close" id="closeWorkoutModal">
+                        <i class="fas fa-times"></i>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="workoutName">Workout Name</label>
+                    <input type="text" id="workoutName" class="form-control" placeholder="e.g., Leg Day">
+                </div>
+                <div class="form-actions">
+                    <button class="btn btn-secondary" id="cancelWorkout">Cancel</button>
+                    <button class="btn btn-primary" id="saveWorkout">Save</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="modal" id="exerciseModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div class="modal-title">Add Exercise</div>
+                    <div class="modal-close" id="closeExerciseModal">
+                        <i class="fas fa-times"></i>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="exerciseName">Exercise Name</label>
+                    <input type="text" id="exerciseName" class="form-control" placeholder="e.g., Bench Press">
+                </div>
+                <div class="form-group">
+                    <label for="exercisePR">Personal Record (Optional)</label>
+                    <input type="text" id="exercisePR" class="form-control" placeholder="e.g., 185 lbs">
+                </div>
+                <div class="form-actions">
+                    <button class="btn btn-secondary" id="cancelExercise">Cancel</button>
+                    <button class="btn btn-primary" id="saveExercise">Save</button>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.1/dist/dexie.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
     <script src="db.js"></script>
     <script src="app.js"></script>
 </body>
